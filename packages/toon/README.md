@@ -757,6 +757,26 @@ const safe = encode(user, {
 > [!TIP]
 > The `replacer` function provides fine-grained control over encoding, similar to `JSON.stringify`'s replacer but with path tracking. See the [API Reference](https://toonformat.dev/reference/api#replacer-function) for more examples, including verbatim output with [`rawString`](https://toonformat.dev/reference/api#raw-string-output).
 
+**Pretty printing for humans:**
+
+```ts
+import { encode } from '@toon-format/toon'
+
+const data = {
+  deps: [
+    { name: 'react', version: '18.3.1' },
+    { name: 'typescript', version: '5.4.5' },
+  ],
+}
+
+console.log(encode(data, { pretty: true }))
+// deps[2]{name,version}:
+//   react     ,18.3.1
+//   typescript,5.4.5
+```
+
+`pretty` pads tabular rows, keyed entry rows, and header field lists so each column lines up. The output is still valid TOON – every conforming decoder reads it identically – but it is not a wire format: padding spends tokens (~+33% on wide tables) for human readability. It defaults to `false`; reach for it when inspecting data, reviewing diffs, or hand-editing config, never for LLM input. The CLI flag is `--pretty`.
+
 ## CLI
 
 Command-line tool for quick JSON↔TOON conversions, token analysis, and pipeline integration. Auto-detects format from file extension, supports stdin/stdout workflows, and offers delimiter options (comma, tab, pipe) that trade readability for fewer tokens.

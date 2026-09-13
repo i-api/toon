@@ -1,9 +1,9 @@
 import type { Depth, FieldNode, JsonArray, JsonObject, JsonValue, ResolvedEncodeOptions } from '../types.ts'
 import type { EncodablePrimitive } from './raw-string.ts'
-import { LIST_ITEM_MARKER, LIST_ITEM_PREFIX } from '../constants.ts'
+import { COMMA, LIST_ITEM_MARKER, LIST_ITEM_PREFIX } from '../constants.ts'
 import { isArrayOfArrays, isArrayOfObjects, isArrayOfPrimitives, isEmptyObject, isEncodablePrimitive, isJsonArray, isJsonObject } from './normalize.ts'
-import { encodeAndJoinPrimitives, encodeKey, encodePrimitive, formatHeader } from './primitives.ts'
-import { collectRowLeaves, extractKeyedTabularFields, extractTabularFields } from './tabular.ts'
+import { encodeAndJoinPrimitives, encodeKey, encodePrimitive, formatHeader, formatHeaderWithPads } from './primitives.ts'
+import { collectRowLeaves, columnWidths, countLeaves, extractKeyedTabularFields, extractTabularFields, headerLeafPads, joinPaddedCells, measureFieldList, scalarWidth } from './tabular.ts'
 
 // #region Encode normalized JsonValue
 
@@ -86,9 +86,28 @@ function* encodeKeyedObjectLines(
   options: ResolvedEncodeOptions,
 ): Generator<string> {
   const entries = Object.entries(value)
-  const header = formatHeader(entries.length, { key, fields, delimiter: options.delimiter, keyed: true })
+  const leaves = countLeaves(fields)
+  if (!options.pretty || leaves < 2) {
+    const header = formatHeader(entries.length, { key, fields, delimiter: options.delimiter, keyed: true })
+    yield indentedLine(depth, header, options.indentSize)
+    yield* encodeKeyedEntryRowsLines(entries, fields, depth + 1, options)
+    return
+  }
+
+  // Pretty: the entry key is a column too. Its widest rendering decides the
+  // gutter the cells start after; a negative gutter is closed by leading
+  // padding after `{`, which §12 trims like any other field-list space.
+  const keys = entries.map(([entryKey]) => encodeKey(entryKey))
+  const keyWidth = Math.max(...keys.map(scalarWidth))
+  const grid = collectCellGrid(entries.map(([, entryValue]) => entryValue as JsonObject), fields, options.delimiter)
+  const braceCol = depth * options.indentSize + headerPrefixWidth(key, entries.length, true, options.delimiter)
+  const rowCol = (depth + 1) * options.indentSize + keyWidth + 2
+  const { header, rows: body } = prettyTable(key, entries.length, true, fields, grid, keys, keyWidth, braceCol, rowCol, options.delimiter)
   yield indentedLine(depth, header, options.indentSize)
-  yield* encodeKeyedEntryRowsLines(entries, fields, depth + 1, options)
+
+  for (const line of body) {
+    yield indentedLine(depth + 1, line, options.indentSize)
+  }
 }
 
 function* encodeKeyedEntryRowsLines(
@@ -189,11 +208,106 @@ function* encodeArrayOfObjectsAsTabularLines(
   depth: Depth,
   options: ResolvedEncodeOptions,
 ): Generator<string> {
-  const header = formatHeader(rows.length, { key: prefix, fields, delimiter: options.delimiter })
+  const leaves = countLeaves(fields)
+  if (!options.pretty || leaves < 2) {
+    const header = formatHeader(rows.length, { key: prefix, fields, delimiter: options.delimiter })
+    yield indentedLine(depth, header, options.indentSize)
+
+    yield* writeTabularRowsLines(rows, fields, depth + 1, options)
+    return
+  }
+
+  // Pretty: render every cell first, measure columns, widen for the header,
+  // then emit header and rows together so the names sit over their columns.
+  const grid = collectCellGrid(rows, fields, options.delimiter)
+  const braceCol = depth * options.indentSize + headerPrefixWidth(prefix, rows.length, false, options.delimiter)
+  const rowCol = (depth + 1) * options.indentSize
+  const { header, rows: body } = prettyTable(prefix, rows.length, false, fields, grid, undefined, 0, braceCol, rowCol, options.delimiter)
   yield indentedLine(depth, header, options.indentSize)
 
-  yield* writeTabularRowsLines(rows, fields, depth + 1, options)
+  for (const line of body) {
+    yield indentedLine(depth + 1, line, options.indentSize)
+  }
 }
+
+/** Rendered width of everything before the field list's opening brace. */
+function headerPrefixWidth(key: string | undefined, length: number, keyed: boolean, delimiter: string): number {
+  let w = 0
+  if (key != null)
+    w += scalarWidth(encodeKey(key))
+  w += 1 + String(length).length + 1
+  if (keyed)
+    w += 1
+  if (delimiter !== COMMA)
+    w += 1
+  return w
+}
+
+// #region Pretty tables (shared)
+
+// Pretty tables are measured, not derived: the header's brace column and the
+// rows' first-cell column are passed in, because a header does not always sit
+// at its depth's indentation (a nested table sits shallower than its rows,
+// and a hyphen-line header sits after `- `). Deriving from depth gets the
+// root case right and both of those wrong.
+
+/** Encodes one row's leaf cells per row of a table. */
+function collectCellGrid(rows: readonly JsonObject[], fields: readonly FieldNode[], delimiter: string): string[][] {
+  return rows.map(row =>
+    collectRowLeaves(row, fields).map(value => encodePrimitive(value, delimiter)),
+  )
+}
+
+interface PrettyTable {
+  /** Header line without indentation. */
+  header: string
+  /** Row lines without indentation. */
+  rows: string[]
+}
+
+/**
+ * Aligns one table's header and rows. Renders cells first, measures scalar
+ * column widths, widens for the header, then returns both together so names
+ * sit over the columns they name. Pure: callers add indentation.
+ */
+function prettyTable(
+  prefix: string | undefined,
+  count: number,
+  keyed: boolean,
+  fields: readonly FieldNode[],
+  grid: string[][],
+  keys: readonly string[] | undefined,
+  keyWidth: number,
+  braceCol: number,
+  rowCol: number,
+  delimiter: string,
+): PrettyTable {
+  const leaves = countLeaves(fields)
+  const widths = columnWidths(grid, leaves)
+  const { spans } = measureFieldList(fields, delimiter)
+  const gutter = braceCol + (spans[0]?.start ?? 1) - rowCol
+  const { pads, lead, padHeader } = headerLeafPads(spans, widths, gutter)
+  const header = padHeader
+    ? formatHeaderWithPads(count, { key: prefix, fields, delimiter, keyed, pads, lead })
+    : formatHeader(count, { key: prefix, fields, delimiter, keyed })
+  const rows: string[] = []
+  if (keyed) {
+    for (let r = 0; r < grid.length; r++) {
+      // The spec-exact single space after the colon is emitted first and the
+      // key-alignment padding follows it, so the line's prefix is unchanged.
+      const keyPad = ' '.repeat(keyWidth - scalarWidth(keys![r]!))
+      rows.push(`${keys![r]}: ${keyPad}${joinPaddedCells(grid[r]!, widths, delimiter)}`)
+    }
+  }
+  else {
+    for (const cells of grid) {
+      rows.push(joinPaddedCells(cells, widths, delimiter))
+    }
+  }
+  return { header, rows }
+}
+
+// #endregion
 
 function* writeTabularRowsLines(
   rows: readonly JsonObject[],
@@ -242,9 +356,22 @@ function* encodeObjectAsListItemLines(
   if (isJsonArray(firstValue) && isArrayOfObjects(firstValue)) {
     const fields = extractTabularFields(firstValue)
     if (fields) {
-      const header = formatHeader(firstValue.length, { key: firstKey, fields, delimiter: options.delimiter })
-      yield indentedListItem(depth, header, options.indentSize)
-      yield* writeTabularRowsLines(firstValue, fields, depth + 2, options)
+      // A hyphen-line header sits after `- `, so its brace column is measured
+      // from the line, never derived from the depth alone.
+      const braceCol = depth * options.indentSize + scalarWidth(LIST_ITEM_PREFIX) + headerPrefixWidth(firstKey, firstValue.length, false, options.delimiter)
+      const rowCol = (depth + 2) * options.indentSize
+      if (options.pretty && countLeaves(fields) >= 2) {
+        const grid = collectCellGrid(firstValue, fields, options.delimiter)
+        const { header, rows: body } = prettyTable(firstKey, firstValue.length, false, fields, grid, undefined, 0, braceCol, rowCol, options.delimiter)
+        yield indentedListItem(depth, header, options.indentSize)
+        for (const line of body)
+          yield indentedLine(depth + 2, line, options.indentSize)
+      }
+      else {
+        const header = formatHeader(firstValue.length, { key: firstKey, fields, delimiter: options.delimiter })
+        yield indentedListItem(depth, header, options.indentSize)
+        yield* writeTabularRowsLines(firstValue, fields, depth + 2, options)
+      }
 
       if (restEntries.length > 0) {
         const restObj: JsonObject = Object.fromEntries(restEntries)
@@ -259,9 +386,22 @@ function* encodeObjectAsListItemLines(
     const keyedFields = extractKeyedTabularFields(firstValue)
     if (keyedFields) {
       const keyedEntries = Object.entries(firstValue)
-      const header = formatHeader(keyedEntries.length, { key: firstKey, fields: keyedFields, delimiter: options.delimiter, keyed: true })
-      yield indentedListItem(depth, header, options.indentSize)
-      yield* encodeKeyedEntryRowsLines(keyedEntries, keyedFields, depth + 2, options)
+      const braceCol = depth * options.indentSize + scalarWidth(LIST_ITEM_PREFIX) + headerPrefixWidth(firstKey, keyedEntries.length, true, options.delimiter)
+      if (options.pretty && countLeaves(keyedFields) >= 2) {
+        const keys = keyedEntries.map(([entryKey]) => encodeKey(entryKey))
+        const keyWidth = Math.max(...keys.map(scalarWidth))
+        const grid = collectCellGrid(keyedEntries.map(([, entryValue]) => entryValue as JsonObject), keyedFields, options.delimiter)
+        const rowCol = (depth + 2) * options.indentSize + keyWidth + 2
+        const { header, rows: body } = prettyTable(firstKey, keyedEntries.length, true, keyedFields, grid, keys, keyWidth, braceCol, rowCol, options.delimiter)
+        yield indentedListItem(depth, header, options.indentSize)
+        for (const line of body)
+          yield indentedLine(depth + 2, line, options.indentSize)
+      }
+      else {
+        const header = formatHeader(keyedEntries.length, { key: firstKey, fields: keyedFields, delimiter: options.delimiter, keyed: true })
+        yield indentedListItem(depth, header, options.indentSize)
+        yield* encodeKeyedEntryRowsLines(keyedEntries, keyedFields, depth + 2, options)
+      }
 
       if (restEntries.length > 0) {
         const restObj: JsonObject = Object.fromEntries(restEntries)

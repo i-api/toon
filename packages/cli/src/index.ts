@@ -21,6 +21,7 @@ interface ConvertArgs extends ArgsDef {
   indent: { type: 'string', description: string, default: string }
   strict: { type: 'boolean', description: string, default: true }
   stats: { type: 'boolean', description: string }
+  pretty: { type: 'boolean', description: string }
 }
 
 const args: ConvertArgs = {
@@ -64,6 +65,10 @@ const args: ConvertArgs = {
     type: 'boolean',
     description: 'Show token statistics',
   },
+  pretty: {
+    type: 'boolean',
+    description: 'Align tabular columns for human reading',
+  },
 }
 
 export const cliOptions: RunMainOptions = {
@@ -105,6 +110,7 @@ export const mainCommand: CommandDef<ConvertArgs> = defineCommand({
         delimiter,
         indentSize,
         shouldPrintStats: args.stats,
+        pretty: args.pretty ?? false,
       })
     }
     else {

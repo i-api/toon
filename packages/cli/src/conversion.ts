@@ -16,6 +16,7 @@ export async function encodeToToon(config: {
   indentSize: NonNullable<EncodeOptions['indentSize']>
   delimiter: NonNullable<EncodeOptions['delimiter']>
   shouldPrintStats: boolean
+  pretty: NonNullable<EncodeOptions['pretty']>
 }): Promise<void> {
   const jsonContent = await readInput(config.input)
 
@@ -30,6 +31,7 @@ export async function encodeToToon(config: {
   const encodeOptions: EncodeOptions = {
     delimiter: config.delimiter,
     indentSize: config.indentSize,
+    pretty: config.pretty,
   }
 
   // When printing stats, we need the full string for token counting.

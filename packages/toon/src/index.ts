@@ -206,6 +206,7 @@ function resolveOptions(options?: EncodeOptions): ResolvedEncodeOptions {
     indentSize: options?.indentSize ?? options?.indent ?? 2,
     delimiter,
     replacer: options?.replacer,
+    pretty: options?.pretty ?? false,
   }
 }
 

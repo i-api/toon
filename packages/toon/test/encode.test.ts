@@ -41,5 +41,14 @@ function resolveEncodeOptions(options?: TestCase['options']): ResolvedEncodeOpti
   return {
     indentSize: options?.indentSize ?? 2,
     delimiter: options?.delimiter ?? DEFAULT_DELIMITER,
+    pretty: options?.pretty ?? false,
   }
 }
+
+describe('pretty defaults', () => {
+  it('is off by default and leaves tables byte-identical', () => {
+    const data = { deps: [{ name: 'react', version: '18.3.1' }, { name: 'typescript', version: '5.4.5' }] }
+    expect(encode(data)).toBe('deps[2]{name,version}:\n  react,18.3.1\n  typescript,5.4.5')
+    expect(encode(data, {})).toBe(encode(data, { pretty: false }))
+  })
+})

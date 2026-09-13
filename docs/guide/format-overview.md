@@ -133,6 +133,17 @@ Each row contains values in the same order as the field list. Values are encoded
 > [!NOTE]
 > Tabular form requires identical field sets across all objects (same keys, order per object may vary), at least one key per object, and every column either primitive-valued or a uniform nested object (see below) – arrays that contain an empty `{}` element or mix value shapes within a column fall back to list form.
 
+> [!TIP]
+> Reading a wide table? Encode with `{ pretty: true }` (or pass `--pretty` to the CLI) to align the columns for human eyes:
+>
+> ```toon
+> deps[2]{name,version}:
+>   react     ,18.3.1
+>   typescript,5.4.5
+> ```
+>
+> Pretty output is still valid TOON – it decodes identically – but it is not a wire format: the padding spends tokens, so keep it away from LLM input.
+
 ### Nested Field Groups
 
 A column whose values are uniform sub-objects (same keys in every element, recursively primitive or nested-uniform) folds into the header as a nested field group, while rows stay flat:

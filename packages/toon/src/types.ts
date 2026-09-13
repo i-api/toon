@@ -71,6 +71,14 @@ export interface EncodeOptions {
    * @default undefined
    */
   replacer?: EncodeReplacer
+  /**
+   * Human-readable column alignment for tabular and keyed-tabular rows.
+   * Display-only: pads cells and header entries with U+0020 so columns line up.
+   * Output stays valid TOON (decoders trim the padding per §12).
+   * Not a wire format: padding costs bytes (~+33% on wide tables).
+   * @default false
+   */
+  pretty?: boolean
 }
 
 export type ResolvedEncodeOptions = Readonly<Required<Omit<EncodeOptions, 'replacer' | 'indent'>>> & Pick<EncodeOptions, 'replacer'>

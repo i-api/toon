@@ -581,6 +581,7 @@ Configuration for [`encode()`](#encode-input-options) and [`encodeLines()`](#enc
 | `indentSize` | `number` | `2` | Number of spaces per indentation level |
 | `delimiter` | `','` \| `'\t'` \| `'\|'` | `','` | Delimiter for array values and tabular rows |
 | `replacer` | `EncodeReplacer` | `undefined` | Optional hook to transform or omit values before encoding (see [Replacer Function](#replacer-function)) |
+| `pretty` | `boolean` | `false` | Align tabular columns for human reading (see below) |
 
 **Delimiter options:**
 
@@ -601,6 +602,17 @@ encode(data, { delimiter: '|' })
 :::
 
 See [Delimiter Strategies](#delimiter-strategies) for guidance on choosing delimiters.
+
+**Pretty printing:**
+
+```ts
+encode(data, { pretty: true })
+// deps[2]{name,version}:
+//   react     ,18.3.1
+//   typescript,5.4.5
+```
+
+`pretty` pads tabular rows, keyed-tabular entry rows, and header field lists with spaces so each column lines up. The output is still valid TOON – decoders trim the padding, so it decodes identically – but it is not a wire format: padding costs bytes for human readability. Keep the default `false` for anything a model reads; use `pretty: true` (or the CLI's `--pretty`) when inspecting data, reviewing diffs, or hand-editing config.
 
 ### `DecodeOptions`
 

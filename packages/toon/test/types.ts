@@ -14,6 +14,7 @@ export interface TestCase {
     delimiter?: ',' | '\t' | '|'
     indentSize?: number
     strict?: boolean
+    pretty?: boolean
   }
   specSection?: string
   note?: string

@@ -66,6 +66,7 @@ toon data.json --stats
 | `--delimiter <char>` | Array delimiter: `,` (comma), tab character, `\|` (pipe). Pass tab as `$'\t'` in bash/zsh |
 | `--indent <number>` | Indentation size (default: `2`) |
 | `--stats` | Show token count estimates and savings (encode only) |
+| `--pretty` | Align tabular columns for human reading (encode only; costs bytes, not a wire format) |
 | `--no-strict` | Skip decode validation (array counts, indentation, header delimiter); last-write-wins on duplicate keys |
 | `--verbose` | Show full stack traces and cause chains for errors (default: `false`) |
 
